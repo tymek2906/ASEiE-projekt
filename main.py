@@ -1,3 +1,4 @@
+import time
 
 from pyspark.sql import SparkSession
 import pyspark.sql.functions as f
@@ -7,6 +8,7 @@ spark = SparkSession \
     .builder \
     .appName("PythonWordCount") \
     .getOrCreate()
+
 
 def readwarc(pos):
     df = spark.read.text(pos, lineSep='fetchTimeMs')
@@ -20,7 +22,29 @@ def readwarc(pos):
     df = df.select(f.regexp_replace(f.col('uri'),"WARC-Target-URI: ",'').alias('uri'),f.col('text'),f.regexp_replace(f.col('date'),"(WARC-Date: )|T",'').alias('date'))
     return df
 
+
+def countwords(df,words):
+    pomdf = (df.select(f.explode(f.split(f.col('text'), ' ')).alias('word'), f.col('date')).where(f.length('word') > 0))
+    return pomdf.filter(pomdf.word.isin(words)).groupBy('word','date').count()
+
+
+def agregate(df,words):
+    pomdf = (df.select(f.explode(f.split(f.col('text'), ' ')).alias('word'), f.col('date')).where(f.length('word') > 0))
+    return pomdf.filter(pomdf.word.isin(words)).groupBy('date').count()
+
+
+def tolist(df):
+    list0 = []
+    for i in df.collect():
+        list0.append(tuple(i))
+    return list0
+
 df = readwarc('CC-MAIN-20170322212946-00000-ip-10-233-31-227.ec2.internal.warc')
-pomdf = (df.select(f.explode(f.split(f.col('text'), ' ')).alias('word'),f.col('date')).where(f.length('word') > 0))
-x = pomdf.where(f.col('word') == "zupa").groupBy('word','date').count().show()
+words = ["zupa","kot","zielony"]
+y = countwords(df,words)
+y.show()
+list1 = tolist(y)
+x = agregate(df,words)
+x.show()
+list2 = tolist(x)
 spark.stop()
