@@ -1,6 +1,7 @@
 import findspark
 from pyspark.sql import SparkSession
 import pyspark.sql.functions as f
+from pyspark.sql.types import StructType, StructField, StringType
 
 
 class LinkReader:
@@ -21,6 +22,7 @@ class LinkReader:
         self._indexes = set()
         self._full_indexes = set()
         self._filenames = set()
+        self._filenames_df = self._spark.createDataFrame([], StructType([StructField('filenames', StringType(), True)]))
         self._url = r"https://data.commoncrawl.org/"
 
     def get_indexes(self):
@@ -66,15 +68,26 @@ class LinkReader:
     def to_list(self, df):
         return [row[0] for row in df.select('*').collect()]
 
-    def index_reader(self, file_location):
+    def index_reader(self, file_location, as_df=False):
         df = self._spark.read.text(file_location)
+        print(df.count())
         df = df.select(f.regexp_extract(f.col('value'), r"""(^pl.*)""", 1).alias('pl')).filter(f.col('pl') != '')
-        df = df.select(f.regexp_extract(f.col('pl'), r""".*filename\":\s\"(crawl.*warc.*CC.*gz)\".*""", 1))
+        print(df.count())
 
-        list_df = self.to_list(df)
-        _urls = [self.append_url(_url) for _url in list_df]
-        self._filenames.update(_urls)
-        print(self._filenames)
+        # This could be optional as it only removes 20k rows of files that aren't warc files, and we could
+        # just be using if to discern "if" the file should be downloaded
+        df = df.select(f.regexp_extract(f.col('pl'), r""".*filename\":\s\"(crawl.*warc.*CC\-MAIN.*gz)\".*""", 1).
+                       alias("filenames")).filter(f.col('filenames') != '')
+
+
+        if not as_df:
+            list_df = self.to_list(df)
+            print(len(list_df))
+            _urls = [self.append_url(_url) for _url in list_df]
+            self._filenames.update(_urls)
+        else:
+            self._filenames_df = self._filenames_df.union(df).dropDuplicates()
+            print(self._filenames_df.count())
         return df
 
     def index_paths_reader(self, file_location):
@@ -101,9 +114,7 @@ if __name__ == '__main__':
 
     # This is one of the files given by the previous steps, read it this way and it will automatically add
     # the filenames to the set inside the class
-    lr.index_reader('files/cdx_april2019')
+    lr.index_reader('files/cdx_april2019', True)
 
     # After inputting every file retrieve the filenames
     files = lr.get_full_indexes()
-    print(len(lr.get_filenames()))
-    print(files)
