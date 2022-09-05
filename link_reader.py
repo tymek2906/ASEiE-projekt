@@ -2,7 +2,7 @@ import findspark
 from pyspark.sql import SparkSession
 import pyspark.sql.functions as f
 from pyspark.sql.types import StructType, StructField, StringType
-
+import gzip
 
 class LinkReader:
     """
@@ -70,16 +70,15 @@ class LinkReader:
 
     def index_reader(self, file_location, as_df=False):
         df = self._spark.read.text(file_location)
-        print(df.count())
-        df = df.select(f.regexp_extract(f.col('value'), r"""(^pl.*)""", 1).alias('pl')).filter(f.col('pl') != '')
-        print(df.count())
-
+        #print(df.count(),"all")
+        df = df.select(f.col('value').substr(1,2).alias('pl'),f.regexp_extract(f.col('value'),"""filename.*charset""",0).alias('value')).groupBy(f.col('value'),f.col('pl')).count()
+        #print(df.count(), "group")
+        df = df.filter(f.col('pl').rlike(r"""pl"""))
+        #print(df.count(), "pl")
         # This could be optional as it only removes 20k rows of files that aren't warc files, and we could
         # just be using if to discern "if" the file should be downloaded
-        df = df.select(f.regexp_extract(f.col('pl'), r""".*filename\":\s\"(crawl.*warc.*CC\-MAIN.*gz)\".*""", 1).
-                       alias("filenames")).filter(f.col('filenames') != '')
-
-
+        df = df.filter(f.col('value').contains('/warc/'))
+        df = df.select(f.regexp_replace(f.col('value'), """(filename....)|(....charset)""", '').alias('value'))
         if not as_df:
             list_df = self.to_list(df)
             print(len(list_df))
@@ -91,7 +90,7 @@ class LinkReader:
         return df
 
     def index_paths_reader(self, file_location):
-        with open(file_location, 'r') as file:
+        with open(file_location, mode='r') as file:
             _files = file.readlines()
 
         for file in _files[:-2]:
@@ -103,18 +102,18 @@ class LinkReader:
 
 if __name__ == '__main__':
     findspark.init()
-    spark = SparkSession.builder.appName("SparkProject").getOrCreate()
+    spark = SparkSession.builder.config("spark.driver.memory", "15g").config("spark.driver.maxResultSize", "4g").appName("SparkProject").getOrCreate()
     lr = LinkReader(spark)
 
     # 3. Get a list of short indexes that need to be checked
-    index = lr.to_list(lr.cluster_reader('files/april2019_cluster.idx'))
+    index = lr.to_list(lr.cluster_reader('files/cluster.idx'))
 
     # Find the full paths from the short paths to the downloadable files
-    lr.index_paths_reader('files/april2019_index.paths')
+    lr.index_paths_reader("files/april2019_index.paths")
 
     # This is one of the files given by the previous steps, read it this way and it will automatically add
     # the filenames to the set inside the class
-    lr.index_reader('files/cdx_april2019', True)
+    lr.index_reader(index)
 
     # After inputting every file retrieve the filenames
     files = lr.get_full_indexes()
