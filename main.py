@@ -3,10 +3,8 @@ import time
 from pyspark.sql import SparkSession
 import pyspark.sql.functions as f
 import findspark
-
-import link_reader as lr
-
-
+import matplotlib.pyplot as plt
+import pandas as pd
 
 def readwarc(file, spark_session):
 
@@ -56,7 +54,7 @@ def countwords(df, words):
 
 
 def agregate(df, words):
-    pomdf = df.select(f.explode(f.split(f.col('text'), ' ')).alias('word'), f.col('date')).where(f.length('word') > 0)
+    pomdf = df.select(f.explode(f.split(f.col('text'), ' ')).alias('word'), f.to_date(f.col("date"),"yyyy-mm-dd").alias('date')).where(f.length('word') > 0)
     return pomdf.filter(pomdf.word.isin(words)).groupBy('date').count()
 
 
@@ -67,19 +65,47 @@ def tolist(df):
     return list0
 
 
+def prepare_to_plot(df,year1,year2):
+    df = df.sort(f.col('date'))
+    df = df.select(f.col('date').substr(0,4).alias('year'),f.col('date').substr(6,5).alias('date'),f.col('count'))
+    df1 = df.select(f.col('date').alias('date 1'), f.col('count').alias('count 1')).where(f.col('year') == year1)
+    df2 = df.select(f.col('date').alias('date 2'), f.col('count').alias('count 2')).where(f.col('year') == year2)
+    df = df1.join(df2,df1['date 1'] == df2['date 2'])
+    df = df.select(f.col('date 1').alias('date'),f.col('count 1'),f.col('count 2'))
+    return df
+
+
+def plot(df):
+    pdf = x.toPandas()
+    pdf.plot.bar(x="date")
+    plt.show()
+
+
+# pointlist = []
+# for x in range(10,30):
+#     pointlist.append((f"2017-03-{x}",x))
+#     pointlist.append((f"2017-04-{x}", 2*x))
+#     pointlist.append((f"2018-03-{x}", x+10))
+#     pointlist.append((f"2018-04-{x}", 2*x+10))
+
+
 if __name__ == '__main__':
     findspark.init()
     spark = SparkSession.builder.appName("SparkProject").getOrCreate()
     print(spark)
+    # dft = spark.createDataFrame(pointlist)
+    # dft = dft.select(f.col('_1').alias('date'),f.col('_2').alias('count'))
     warc_df = readwarc('files/test.warc', spark)
     df = process_warc(warc_df)
     words = ["zupa", "kot", "zielony"]
-    y = countwords(df, words)
-    y.show()
-    list1 = tolist(y)
-    print(list1)
-    x = agregate(df, words)
-    x.show()
-    list2 = tolist(x)
-    print(list2)
+    #y = countwords(df, words)
+    #y.show()
+    #list1 = tolist(y)
+    #print(list1)
+    df = agregate(df, words)
+    x = prepare_to_plot(df,2017,2018)
+    plot(x)
+    list2 = tolist(df)
     spark.stop()
+
+
