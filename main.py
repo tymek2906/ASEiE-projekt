@@ -1,9 +1,7 @@
 from pyspark.sql import SparkSession
 import pyspark.sql.functions as f
-import findspark
 import matplotlib.pyplot as plt
 import pandas as pd
-import pyspark.sql.types as t
 
 def readwarc(file, spark_session):
 
@@ -68,12 +66,9 @@ def prepare_to_plot(df,year1,year2):
     df = df.sort(f.col('date'))
     df = df.select(f.col('date').substr(0,4).alias('year'),f.col('date').substr(6,5).alias('date'),f.col('count'))
     df1 = df.select(f.col('date').alias('date 1'), f.col('count').alias('count 1')).where(f.col('year') == year1)
-    df1.show(20, True)
     df2 = df.select(f.col('date').alias('date 2'), f.col('count').alias('count 2')).where(f.col('year') == year2)
-    df2.show(20, True)
     df = df1.join(df2,df1['date 1'] == df2['date 2'], how='outer')
     df = df.select(f.col('date 1').alias('date'),f.col('count 1'),f.col('count 2'))
-    df.show(20, True)
     return df
 
 
@@ -92,7 +87,6 @@ def plot(df):
 
 
 if __name__ == '__main__':
-    findspark.init()
     spark = SparkSession.builder.appName("SparkProject").getOrCreate()
     print(spark)
     # dft = spark.createDataFrame(pointlist)

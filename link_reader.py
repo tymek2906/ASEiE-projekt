@@ -1,4 +1,4 @@
-import findspark
+
 from pyspark.sql import SparkSession
 import pyspark.sql.functions as f
 from pyspark.sql.types import StructType, StructField, StringType
@@ -143,3 +143,11 @@ class LinkReader:
         self.process(self._url2018_index[1])
         self.process(self._url2019_index[0])
         self.process(self._url2019_index[1])
+
+if __name__ == '__main__':
+
+    spark = SparkSession.builder.config("spark.driver.memory", "15g").\
+        config("spark.driver.maxResultSize", "4g").appName("SparkProject").getOrCreate()
+    lr = LinkReader(spark)
+    lr.find_warcs()
+    lr.get_filenames()
