@@ -80,7 +80,6 @@ class LinkReader:
     def index_reader(self, file_location, as_df=False):
         df = self._spark.read.text(file_location)
 
-
         df = df.select(f.col('value').substr(1,2).alias('pl'),
                        f.regexp_extract(f.col('value'),"""filename.*charset""",0).alias('value')).\
             groupBy(f.col('value'), f.col('pl')).count()
@@ -128,7 +127,7 @@ class LinkReader:
         except IndexError:
             print("This isn't a list of urls containing a cluster")
 
-    def process(self, url, idx_url):
+    def process(self, idx_url):
         index_file_link = self.get_full_url_s3(idx_url)  # Get link to s3 index file
         index_file_downloaded = self.get_file(index_file_link)  # Download it to find the cluster file
         cluster_file = self.get_cluster(index_file_downloaded)  # Get link to s3 cluster file
@@ -140,7 +139,7 @@ class LinkReader:
         self._full_indexes = set()  # reset full indexes
 
     def find_warcs(self):
-        self.process(self._url2018[0], self._url2018_index[0])
-        self.process(self._url2018[1], self._url2018_index[1])
-        self.process(self._url2019[0], self._url2019_index[0])
-        self.process(self._url2019[1], self._url2019_index[1])
+        self.process(self._url2018_index[0])
+        self.process(self._url2018_index[1])
+        self.process(self._url2019_index[0])
+        self.process(self._url2019_index[1])

@@ -3,6 +3,7 @@ import pyspark.sql.functions as f
 import findspark
 import matplotlib.pyplot as plt
 import pandas as pd
+import pyspark.sql.types as t
 
 def readwarc(file, spark_session):
 
@@ -67,14 +68,17 @@ def prepare_to_plot(df,year1,year2):
     df = df.sort(f.col('date'))
     df = df.select(f.col('date').substr(0,4).alias('year'),f.col('date').substr(6,5).alias('date'),f.col('count'))
     df1 = df.select(f.col('date').alias('date 1'), f.col('count').alias('count 1')).where(f.col('year') == year1)
+    df1.show(20, True)
     df2 = df.select(f.col('date').alias('date 2'), f.col('count').alias('count 2')).where(f.col('year') == year2)
-    df = df1.join(df2,df1['date 1'] == df2['date 2'])
+    df2.show(20, True)
+    df = df1.join(df2,df1['date 1'] == df2['date 2'], how='outer')
     df = df.select(f.col('date 1').alias('date'),f.col('count 1'),f.col('count 2'))
+    df.show(20, True)
     return df
 
 
 def plot(df):
-    pdf = x.toPandas()
+    pdf = df.toPandas()
     pdf.plot.bar(x="date")
     plt.show()
 
@@ -96,12 +100,9 @@ if __name__ == '__main__':
     warc_df = readwarc('files/test.warc', spark)
     df = process_warc(warc_df)
     words = ["zupa", "kot", "zielony"]
-    #y = countwords(df, words)
-    #y.show()
-    #list1 = tolist(y)
-    #print(list1)
+
     df = agregate(df, words)
-    x = prepare_to_plot(df,2017,2018)
+    x = prepare_to_plot(df, 2017, 2018)
     plot(x)
     list2 = tolist(df)
     spark.stop()
