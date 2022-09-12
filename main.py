@@ -1,6 +1,8 @@
+
+
+# needed installation sc.install_pypi_package("pandas==0.25.1")
 from pyspark.sql import SparkSession
 import pyspark.sql.functions as f
-import matplotlib.pyplot as plt
 import pandas as pd
 
 def readwarc(file, spark_session):
@@ -65,17 +67,17 @@ def tolist(df):
 def prepare_to_plot(df,year1,year2):
     df = df.sort(f.col('date'))
     df = df.select(f.col('date').substr(0,4).alias('year'),f.col('date').substr(6,5).alias('date'),f.col('count'))
-    df1 = df.select(f.col('date').alias('date 1'), f.col('count').alias('count 1')).where(f.col('year') == year1)
-    df2 = df.select(f.col('date').alias('date 2'), f.col('count').alias('count 2')).where(f.col('year') == year2)
-    df = df1.join(df2,df1['date 1'] == df2['date 2'], how='outer')
-    df = df.select(f.col('date 1').alias('date'),f.col('count 1'),f.col('count 2'))
+    df1 = df.select(f.col('date').alias('date_1'), f.col('count').alias('count_1')).where(f.col('year') == year1)
+    df2 = df.select(f.col('date').alias('date_2'), f.col('count').alias('count_2')).where(f.col('year') == year2)
+    df = df1.join(df2,df1['date_1'] == df2['date_2'], how='outer')
+    df = df.select(f.when( df.date_1.isNull(), df.date_2).otherwise(df.date_1).alias('date'),f.col('count_1'),f.col('count_2'))
     return df
 
 
-def plot(df):
-    pdf = df.toPandas()
-    pdf.plot.bar(x="date")
-    plt.show()
+# def plot(df):
+#     pdf = df.toPandas()
+#     pdf.plot.bar(x="date")
+#     plt.show()
 
 
 # pointlist = []
@@ -86,17 +88,16 @@ def plot(df):
 #     pointlist.append((f"2018-04-{x}", 2*x+10))
 
 
-if __name__ == '__main__':
-    spark = SparkSession.builder.appName("SparkProject").getOrCreate()
-    print(spark)
+spark = SparkSession.builder.appName("SparkProject").getOrCreate()
+print(spark)
     # dft = spark.createDataFrame(pointlist)
     # dft = dft.select(f.col('_1').alias('date'),f.col('_2').alias('count'))
-    warc_df = readwarc('files/test.warc', spark)
-    df = process_warc(warc_df)
-    words = ["zupa", "kot", "zielony"]
+warc_df = readwarc('s3://commoncrawl/crawl-data/CC-MAIN-2019-18/segments/1555578711882.85/warc/CC-MAIN-20190425074144-20190425100144-00322.warc.gz', spark)
+df = process_warc(warc_df)
+words = ["covid", "kot", "zielony"]
 
-    df = agregate(df, words)
-    x = prepare_to_plot(df, 2017, 2018)
-    plot(x)
-    list2 = tolist(df)
-    spark.stop()
+df = agregate(df, words)
+x = prepare_to_plot(df, 2018, 2019)
+#plot(x)
+x.coalesce(1).write.csv(r"s3://sparkprojektbucket/output")
+spark.stop()
