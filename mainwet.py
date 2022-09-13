@@ -4,6 +4,8 @@
 from pyspark.sql import SparkSession
 import pyspark.sql.functions as f
 import pandas as pd
+import findspark
+import matplotlib.pyplot as plt
 
 def readwarc(file, spark_session):
 
@@ -17,28 +19,19 @@ def process_warc(df):
     df = df.select(f.regexp_extract(f.col('value'), """WARC-Target-URI: [\s\S]*?[\n]""", 0).alias('uri'),
                    f.col('value'))
 
-    df = df.select(f.col('uri'),
-                   f.col('value'),
+    df = df.select(f.col('value'),
                    f.regexp_extract(f.col('uri'), """[.]pl""", 0).alias('lang'))
 
-    df = df.select(f.col('uri'),
-                   f.col('value')).where(f.col('lang') == '.pl')
+    df = df.select(f.col('value')).where(f.col('lang') == '.pl')
 
-    df = df.select(f.col('uri'),f.col('value').alias('text'))
+    df = df.select(f.col('value').alias('text'))
 
-    df = df.select(f.col('uri'),f.col('text'),f.regexp_extract(f.col('text'), """WARC-Date: [\s\S]*?T""", 0).alias('date'))
+    df = df.select(f.col('text'),f.regexp_extract(f.col('text'), """WARC-Date: [\s\S]*?T""", 0).alias('date'))
 
-    df = df.select(f.col('uri'),
-                   f.lower(f.col('text')).alias('text'),
+    df = df.select(f.regexp_replace(f.lower(f.col('text')), """[\W]+""", ' ').alias('text'),
                    f.col('date'))
 
-    df = df.select(f.col('uri'),
-                   f.decode(f.col('text'), 'ISO-8859-1').alias('text'),
-                   f.col('date'))
-
-    df = df.select(f.regexp_replace(f.col('uri'), "WARC-Target-URI: ", '').alias('uri'),
-                   f.col('text'),
-                   f.regexp_replace(f.col('date'), "(WARC-Date: )|T", '').alias('date'))
+    df = df.select(f.col('text'),f.regexp_replace(f.col('date'), "(WARC-Date: )|T", '').alias('date'))
 
     return df
 
@@ -70,10 +63,10 @@ def prepare_to_plot(df,year1,year2):
     return df
 
 
-# def plot(df):
-#     pdf = df.toPandas()
-#     pdf.plot.bar(x="date")
-#     plt.show()
+def plot(df):
+     pdf = df.toPandas()
+     pdf.plot.bar(x="date")
+     plt.show()
 
 
 # pointlist = []
@@ -83,17 +76,16 @@ def prepare_to_plot(df,year1,year2):
 #     pointlist.append((f"2018-03-{x}", x+10))
 #     pointlist.append((f"2018-04-{x}", 2*x+10))
 
-
+findspark.init()
 spark = SparkSession.builder.appName("SparkProject").getOrCreate()
 print(spark)
     # dft = spark.createDataFrame(pointlist)
     # dft = dft.select(f.col('_1').alias('date'),f.col('_2').alias('count'))
-warc_df = readwarc('s3://commoncrawl/crawl-data/CC-MAIN-2019-18/segments/1555578711882.85/wet/CC-MAIN-20190425074144-20190425100144-00322.warc.wet.gz', spark)
+warc_df = readwarc('CC-MAIN-20190425074144-20190425100144-00322.warc.wet.gz', spark)
 df = process_warc(warc_df)
 words = ["covid", "kot", "zielony"]
-
 df = agregate(df, words)
+df.show()
 x = prepare_to_plot(df, 2018, 2019)
-#plot(x)
-x.coalesce(1).write.csv(r"s3://sparkprojektbucket/output")
+plot(x)
 spark.stop()
