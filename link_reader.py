@@ -99,6 +99,29 @@ class LinkReader:
             print(self._filenames_df.count())
         return df
 
+    def change_to_wet(self, file_location, as_df=False):
+        df = self._spark.read.text(file_location)
+
+        df = df.select(f.col('value').substr(1, 2).alias('pl'),
+                       f.regexp_extract(f.col('value'), """filename.*charset""", 0).alias('value')). \
+            groupBy(f.col('value'), f.col('pl')).count()
+
+        df = df.filter(f.col('pl').rlike(r"""pl"""))
+
+        df = df.filter(f.col('value').contains('/warc/'))
+        df = df.select(f.regexp_replace(f.col('value'), """(filename....)|(....charset)""", '').alias('value'))
+        df = df.select(f.regexp_replace(f.col('value'), r"/warc/", r"/wet/").alias('value'))
+        df = df.select(f.regexp_replace(f.col('value'), r"warc.gz", r"warc.wet.gz").alias('value'))
+        if not as_df:
+            list_df = self.to_list(df)
+            print(len(list_df))
+            _urls = [self.get_full_url_s3(_url) for _url in list_df]
+            self._filenames.update(_urls)
+        else:
+            self._filenames_df = self._filenames_df.union(df).dropDuplicates()
+            print(self._filenames_df.count())
+        return df
+
     def index_paths_reader(self, file_location):
         with open(file_location, mode='r') as file:
             _files = file.readlines()
@@ -160,10 +183,26 @@ class LinkReader:
             files.append(x)
         self.index_reader(files)  # Retrieve links to warc files and put them into self._filenames
 
+    def find_wets(self):
+        files = []
+        files1 = self.process(self._url2018_index[0], self._urlcluster[0])
+        files2 = self.process(self._url2018_index[1], self._urlcluster[1])
+        files3 = self.process(self._url2019_index[0], self._urlcluster[2])
+        files4 = self.process(self._url2019_index[1], self._urlcluster[3])
+        for x in files1:
+            files.append(x)
+        for x in files2:
+            files.append(x)
+        for x in files3:
+            files.append(x)
+        for x in files4:
+            files.append(x)
+        self.change_to_wet(files)  # Retrieve links to warc files and put them into self._filenames
+
 
 spark = SparkSession.builder.config("spark.driver.memory", "15g").config("spark.driver.maxResultSize", "4g").appName(
     "SparkProject").getOrCreate()
 lr = LinkReader(spark)
-lr.find_warcs()
+lr.find_wets()
 print(len(lr.get_filenames()))
 spark.stop()
