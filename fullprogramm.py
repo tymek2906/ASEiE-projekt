@@ -21,20 +21,20 @@ class LinkReader:
         self._full_indexes = set()
         self._filenames = set()
         self._filenames_df = self._spark.createDataFrame([], StructType([StructField('filenames', StringType(), True)]))
-        self._url_s3 = r"s3://commoncrawl/"
-        self._url_http = r"https://data.commoncrawl.org/"
-        self._url2018 = [r"crawl-data/CC-MAIN-2018-13/warc.paths.gz",
-                         r"crawl-data/CC-MAIN-2018-17/warc.paths.gz"]
-        self._url2019 = [r"crawl-data/CC-MAIN-2019-13/warc.paths.gz",
-                         r"crawl-data/CC-MAIN-2019-18/warc.paths.gz"]
-        self._url2018_index = [r"s3://commoncrawl/cc-index/collections/CC-MAIN-2018-13/indexes/",
-                               r"s3://commoncrawl/cc-index/collections/CC-MAIN-2018-17/indexes/"]
-        self._url2019_index = [r"s3://commoncrawl/cc-index/collections/CC-MAIN-2019-13/indexes/",
-                               r"s3://commoncrawl/cc-index/collections/CC-MAIN-2019-18/indexes/"]
-        self._urlcluster = [r"s3://commoncrawl/cc-index/collections/CC-MAIN-2018-13/indexes/cluster.idx",
-                            r"s3://commoncrawl/cc-index/collections/CC-MAIN-2018-17/indexes/cluster.idx",
-                            r"s3://commoncrawl/cc-index/collections/CC-MAIN-2019-13/indexes/cluster.idx",
-                            r"s3://commoncrawl/cc-index/collections/CC-MAIN-2019-18/indexes/cluster.idx"]
+        self._url_s3 = r""
+        self._url_http = r""
+        self._url2018 = [r"",
+                         r""]
+        self._url2019 = [r"",
+                         r""]
+        self._url2018_index = [r"",
+                               r""]
+        self._url2019_index = [r"",
+                               r""]
+        self._urlcluster = [r"files/cluster.idx",
+                            r"files/cluster.idx",
+                            r"files/cluster.idx",
+                            r"files/cluster.idx"]
 
     def get_indexes(self):
         return self._indexes
@@ -98,7 +98,7 @@ class LinkReader:
             print(self._filenames_df.count())
         return df
 
-    def change_to_wet(self, file_location, as_df=False):
+    def change_to_wet(self, file_location, as_df=True):
         df = self._spark.read.text(file_location)
 
         df = df.select(f.col('value').substr(1, 2).alias('pl'),
@@ -111,15 +111,19 @@ class LinkReader:
         df = df.select(f.regexp_replace(f.col('value'), """(filename....)|(....charset)""", '').alias('value'))
         df = df.select(f.regexp_replace(f.col('value'), r"/warc/", r"/wet/").alias('value'))
         df = df.select(f.regexp_replace(f.col('value'), r"warc.gz", r"warc.wet.gz").alias('value'))
+        df = df.select(f.regexp_extract(f.col('value'), r"crawl-data/CC.*[.]gz",0).alias('value')).where(f.length(f.col('value'))>23)
+        print(df.count())
         if not as_df:
             list_df = self.to_list(df)
             print(len(list_df))
             _urls = [self.get_full_url_s3(_url) for _url in list_df]
             self._filenames.update(_urls)
         else:
-            self._filenames_df = self._filenames_df.union(df).dropDuplicates()
-            print(self._filenames_df.count())
+            df = df.select(f.concat(f.lit("tutaj prefix od s3"), f.col("value")))
+            print(df.count())
+            df.write.csv(r"s3://answers-aseie/wszystko")
         return df
+
 
     def index_paths_reader(self, file_location):
         with open(file_location, mode='r') as file:
@@ -153,6 +157,7 @@ class LinkReader:
         i = []
         for x in l:
             i.append(url + x)
+        print(i)
         return i
 
     def process(self, idx_url, cluster_id):
@@ -249,16 +254,22 @@ def prepare_to_plot(df,year1,year2):
     df = df.select(f.when( df.date_1.isNull(), df.date_2).otherwise(df.date_1).alias('date'),f.col('count_1'),f.col('count_2'))
     return df
 
-spark = SparkSession.builder.appName("SparkProject").getOrCreate()
+spark = SparkSession.builder.config("spark.driver.memory", "15g").config("spark.driver.maxResultSize", "4g").appName("SparkProject").getOrCreate()
+
 lr = LinkReader(spark)
 lr.find_wets()
-files = lr.get_filenames()
+# files = lr.get_filenames()
+# print("Files inside: ", files)
+# print ("Length of files list: ", len(files))
+df = spark.read.csv("s3://answers-aseie/wszystko/*.csv")
+files = [data[0] for data in df.select('filenames').collect()]
 warc_df = readwarc(files, spark)
 df = process_warc(warc_df)
-words = ["covid", "kot", "zielony"]
+words = ["covid", "wirus", "covid19", "pandemia"]
+# x.coalesce(1).write.csv(r"s3://answers-aseie/wszystko")
 df = agregate(df, words)
 df.show()
 x = prepare_to_plot(df, 2018, 2019)
-x.coalesce(1).write.csv(r"s3://sparkprojektbucket/output")
+#x.coalesce(1).write.csv(r"s3://answers-aseie/output")
 spark.stop()
 

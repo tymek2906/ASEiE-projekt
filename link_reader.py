@@ -1,7 +1,7 @@
 from pyspark.sql import SparkSession
 import pyspark.sql.functions as f
 from pyspark.sql.types import StructType, StructField, StringType
-
+import findspark
 
 class LinkReader:
     """
@@ -112,6 +112,7 @@ class LinkReader:
         df = df.select(f.regexp_replace(f.col('value'), """(filename....)|(....charset)""", '').alias('value'))
         df = df.select(f.regexp_replace(f.col('value'), r"/warc/", r"/wet/").alias('value'))
         df = df.select(f.regexp_replace(f.col('value'), r"warc.gz", r"warc.wet.gz").alias('value'))
+        df = df.select(f.col('value')).where()
         if not as_df:
             list_df = self.to_list(df)
             print(len(list_df))
@@ -199,10 +200,11 @@ class LinkReader:
             files.append(x)
         self.change_to_wet(files)  # Retrieve links to warc files and put them into self._filenames
 
-
+findspark.init()
 spark = SparkSession.builder.config("spark.driver.memory", "15g").config("spark.driver.maxResultSize", "4g").appName(
     "SparkProject").getOrCreate()
 lr = LinkReader(spark)
 lr.find_wets()
 print(len(lr.get_filenames()))
+filelist = lr.get_filenames()
 spark.stop()
